@@ -1,0 +1,45 @@
+# --- Binários e Arquivos de Objeto ---
+# Executáveis
+*.exe
+*.out
+*.app
+a.out
+
+# Arquivos de objeto
+*.o
+*.obj
+
+# --- Arquivos de Debug e Temporários ---
+# Arquivos de depuração
+*.gch       # precompiled headers (GCC)
+*.pdb       # Program Database (MSVC)
+*.ilk       # Incremental Linker (MSVC)
+
+# Arquivos temporários e de swap
+*~
+*.bak
+*.swp
+*.log
+
+# --- Configurações de IDEs e Sistemas Operacionais ---
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# VS Code
+.vscode/
+
+# JetBrains IDEs (CLion, IntelliJ)
+.idea/
+
+# Visual Studio
+*.suo
+*.user
+
+# --- Code::Blocks ---
+*.cbp        # Arquivos de projeto do Code::Blocks
+*.workspace  # Arquivos de workspace do Code::Blocks
+/bin/        # Pasta de saída dos binários (executáveis)
+/obj/        # Pasta de saída dos arquivos de objeto
