@@ -7,7 +7,7 @@
 
 // Variáveis de configuração
 const float FPS = 90;
-const int SCREEN_WIDTH= 1024;
+const int SCREEN_WIDTH= 640;
 const int SCREEN_HEIGHT = 480;
 const int BLOCO_TAMANHO = 32;
 
@@ -28,9 +28,46 @@ bool redraw = false;
 bool config();
 bool renderSprites();
 void destroyBitmapSprites();
-int choose_random(int arr[], int size);
+int choose_random(const int arr[], int size);
 void world_generation();
 void reload_world();
+bool init_player();
+ALLEGRO_BITMAP* load_and_scale_bitmap(const char* filename, int width, int height);
+
+typedef struct Player {
+    float x;
+    float y;
+    float dx; // Velocidade em X
+    float dy; // Velocidade em Y
+    int width;
+    int height;
+    ALLEGRO_BITMAP *sprite; // sprite do corpo (spr_steve)
+    ALLEGRO_BITMAP *hand_sprite; // sprite da mão (spr_steve_hand)
+    bool on_ground;
+} Player;
+
+Player player; // instância global
+
+bool init_player() {
+    player.width = BLOCO_TAMANHO;       
+    player.height = BLOCO_TAMANHO * 2;
+
+    player.sprite = load_and_scale_bitmap("sprites/spr_steve.png", player.width, player.height);
+    if (!player.sprite) {
+        fprintf(stderr, "falha ao criar player.sprite!\n");
+        destroyBitmapSprites();
+        return false;
+    }
+
+    player.hand_sprite = load_and_scale_bitmap("sprites/spr_steve_hand.png", 16, 24);
+    if (!player.hand_sprite) { 
+        fprintf(stderr, "falha ao criar player.hand_sprite!\n");
+        destroyBitmapSprites();
+        return false;
+    }
+
+    return true;
+}
 
 ALLEGRO_BITMAP* load_and_scale_bitmap(const char* filename, int width, int height) {
     ALLEGRO_BITMAP *loaded_bitmap = al_load_bitmap(filename);
@@ -77,12 +114,34 @@ int main(int argc, char **argv) {
     al_register_event_source(event_queue, al_get_keyboard_event_source());
     al_register_event_source(event_queue, al_get_mouse_event_source());
 
-    al_clear_to_color(al_map_rgb(255,255,255));
+    init_player();
+    if (!player.sprite || !player.hand_sprite) {
+        fprintf(stderr, "Falha ao carregar os sprites do jogador. Encerrando.\n");
+        al_destroy_timer(timer);
+        al_destroy_display(display);
+        al_destroy_event_queue(event_queue);
+        al_uninstall_keyboard();
+        al_uninstall_mouse();
+        al_shutdown_image_addon();
+        return -1;
+    }
+
+    al_clear_to_color(al_map_rgb(255, 255, 255));
     al_flip_display();
 
     al_start_timer(timer);
-
+    
+    al_clear_to_color(al_map_rgb(135, 206, 235));
     world_generation();
+    al_draw_bitmap(player.sprite, player.x, player.y, 0);
+
+
+    // desenho dos braços do steve
+    float hand_draw_x = player.x + player.width - (player.hand_sprite ? al_get_bitmap_width(player.hand_sprite) / 2 : 0) - 4;
+    float hand_draw_y = player.y + 16;
+
+    al_draw_bitmap(player.hand_sprite, hand_draw_x, hand_draw_y, 0);
+
     al_flip_display();
 
     while(1) {
@@ -153,8 +212,6 @@ int main(int argc, char **argv) {
 
         if(redraw && al_is_event_queue_empty(event_queue)) {
             redraw = false;
-
-            al_clear_to_color(al_map_rgb(0, 0, 100));
         }
     }
 
@@ -163,6 +220,8 @@ end_game:
     al_destroy_bitmap(spr_grass);
     al_destroy_bitmap(spr_dirt);
     al_destroy_bitmap(spr_stone);
+    al_destroy_bitmap(player.sprite);
+    al_destroy_bitmap(player.hand_sprite);
 
     // Destruir compontes do Allegro
     al_destroy_timer(timer);
@@ -231,6 +290,8 @@ bool config () {
         al_destroy_bitmap(spr_grass);
         al_destroy_bitmap(spr_dirt);
         al_destroy_bitmap(spr_stone);
+        al_destroy_bitmap(player.sprite);
+        al_destroy_bitmap(player.hand_sprite);
         al_destroy_display(display);
         al_destroy_timer(timer);
         al_uninstall_keyboard();
@@ -275,6 +336,8 @@ void destroyBitmapSprites() {
     if (spr_grass) al_destroy_bitmap(spr_grass);
     if (spr_dirt) al_destroy_bitmap(spr_dirt);
     if (spr_stone) al_destroy_bitmap(spr_stone);
+    if (player.sprite) al_destroy_bitmap(player.sprite);
+    if (player.hand_sprite) al_destroy_bitmap(player.hand_sprite);
 
     al_destroy_display(display);
     al_destroy_timer(timer);
@@ -331,12 +394,13 @@ void world_generation() {
     }
 }
 
-int choose_random(int arr[], int size) {
+int choose_random(const int arr[], int size) {
     int index = rand() % size;
     return arr[index];
 }
 
 void reload_world() {
+    al_clear_to_color(al_map_rgb(135, 206, 235));
     world_generation();
     al_flip_display();
 }
