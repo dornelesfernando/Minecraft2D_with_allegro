@@ -1,3 +1,4 @@
+// --- BIBLIOTECAS UTILIZADAS ---
 #include <stdio.h>
 #include <stdbool.h>
 #include <allegro5/allegro.h>
@@ -5,26 +6,40 @@
 #include <math.h>
 #include <time.h>
 
-// Variáveis de configuração
-const float FPS = 90;
-const int SCREEN_WIDTH= 640;
-const int SCREEN_HEIGHT = 480;
-const int BLOCO_TAMANHO = 32;
+// --- VARIÁVEIS DE CONFIGURAÇÃO ---
+#define FPS 90.0f
+#define SCREEN_WIDTH 640
+#define SCREEN_HEIGHT 480
+#define BLOCO_TAMANHO 32
 
-// Configs
+// --- CONSTANTES DE FÍSICA ---
+#define GRAVITY 0.5f
+#define JUMP_STRENGTH -8.0f
+#define PLAYER_SPEED 3.0f
+
+// --- CONFIGURAÇÕES ---
 ALLEGRO_DISPLAY *display = NULL;
 ALLEGRO_EVENT_QUEUE *event_queue = NULL;
 ALLEGRO_TIMER *timer = NULL;
 
-// Sprites
+// --- SPRITES ---
 ALLEGRO_BITMAP *spr_grass = NULL;
 ALLEGRO_BITMAP *spr_dirt = NULL;
 ALLEGRO_BITMAP *spr_stone = NULL;
 
-// Variaveis globais
+// --- VARIÁVEIS GLOBAIS ---
 bool redraw = false;
+bool is_fullscreen = false;
 
-// Protótipos de funções
+// --- CONSTANTES PARA  BOTÃO DE TELA CHEIA ---
+#define FULLSCREEN_BUTTON_X (SCREEN_WIDTH - 120)
+#define FULLSCREEN_BUTTON_Y 10
+#define FULLSCREEN_BUTTON_WIDTH 100
+#define FULLSCREEN_BUTTON_HEIGHT 30
+
+// --------------------------------------------------------------------------------- //
+
+// --- PROTÓTIPOS DE FUNÇÕES ---
 bool config();
 bool renderSprites();
 void destroyBitmapSprites();
@@ -34,9 +49,14 @@ void reload_world();
 bool init_player();
 ALLEGRO_BITMAP* load_and_scale_bitmap(const char* filename, int width, int height);
 
+// --------------------------------------------------------------------------------- //
+
+// --- STRUCT DO JOGADOR
 typedef struct Player {
     float x;
     float y;
+    float hand_x;
+    float hand_y;
     float dx; // Velocidade em X
     float dy; // Velocidade em Y
     int width;
@@ -44,12 +64,15 @@ typedef struct Player {
     ALLEGRO_BITMAP *sprite; // sprite do corpo (spr_steve)
     ALLEGRO_BITMAP *hand_sprite; // sprite da mão (spr_steve_hand)
     bool on_ground;
+    int facing_direction;
 } Player;
 
 Player player; // instância global
 
+// --------------------------------------------------------------------------------- //
+
 bool init_player() {
-    player.width = BLOCO_TAMANHO;       
+    player.width = BLOCO_TAMANHO;
     player.height = BLOCO_TAMANHO * 2;
 
     player.sprite = load_and_scale_bitmap("sprites/spr_steve.png", player.width, player.height);
@@ -60,7 +83,7 @@ bool init_player() {
     }
 
     player.hand_sprite = load_and_scale_bitmap("sprites/spr_steve_hand.png", 16, 24);
-    if (!player.hand_sprite) { 
+    if (!player.hand_sprite) {
         fprintf(stderr, "falha ao criar player.hand_sprite!\n");
         destroyBitmapSprites();
         return false;
@@ -98,137 +121,6 @@ ALLEGRO_BITMAP* load_and_scale_bitmap(const char* filename, int width, int heigh
 
     al_destroy_bitmap(loaded_bitmap);
     return scaled_bitmap;
-}
-
-int main(int argc, char **argv) {
-
-     srand(time(NULL));
-
-    if (!config()) {
-        fprintf(stderr, "Falha na inicializacao do Allegro. Encerrando o programa.\n");
-        return -1;
-    }
-
-    al_register_event_source(event_queue, al_get_display_event_source(display));
-    al_register_event_source(event_queue, al_get_timer_event_source(timer));
-    al_register_event_source(event_queue, al_get_keyboard_event_source());
-    al_register_event_source(event_queue, al_get_mouse_event_source());
-
-    init_player();
-    if (!player.sprite || !player.hand_sprite) {
-        fprintf(stderr, "Falha ao carregar os sprites do jogador. Encerrando.\n");
-        al_destroy_timer(timer);
-        al_destroy_display(display);
-        al_destroy_event_queue(event_queue);
-        al_uninstall_keyboard();
-        al_uninstall_mouse();
-        al_shutdown_image_addon();
-        return -1;
-    }
-
-    al_clear_to_color(al_map_rgb(255, 255, 255));
-    al_flip_display();
-
-    al_start_timer(timer);
-    
-    al_clear_to_color(al_map_rgb(135, 206, 235));
-    world_generation();
-    al_draw_bitmap(player.sprite, player.x, player.y, 0);
-
-
-    // desenho dos braços do steve
-    float hand_draw_x = player.x + player.width - (player.hand_sprite ? al_get_bitmap_width(player.hand_sprite) / 2 : 0) - 4;
-    float hand_draw_y = player.y + 16;
-
-    al_draw_bitmap(player.hand_sprite, hand_draw_x, hand_draw_y, 0);
-
-    al_flip_display();
-
-    while(1) {
-        ALLEGRO_EVENT ev;
-        al_wait_for_event(event_queue, &ev);
-
-        if(ev.type==ALLEGRO_EVENT_MOUSE_BUTTON_DOWN) {
-            switch(ev.mouse.button){
-
-                case 1:
-                    printf("x:%d y:%d\n",ev.mouse.x, ev.mouse.y);
-                    reload_world();
-                    break;
-            }
-        } else if(ev.type == ALLEGRO_EVENT_TIMER) {
-            // A cada iteração do código
-            redraw = true;
-        }
-
-        else if(ev.type == ALLEGRO_EVENT_KEY_DOWN) {
-            //Tecla apertada
-            switch(ev.keyboard.keycode) {
-
-                // ↑
-                case ALLEGRO_KEY_UP:
-                    break;
-
-                // ↓
-                case ALLEGRO_KEY_DOWN:
-                    break;
-
-                // W
-                case ALLEGRO_KEY_W:
-                    break;
-
-                // S
-                case ALLEGRO_KEY_S:
-                    break;
-
-                // ESC
-                case ALLEGRO_KEY_ESCAPE:
-                    goto end_game;
-            }
-        } else if(ev.type == ALLEGRO_EVENT_KEY_UP) {
-            // Soltar a tecla
-            switch(ev.keyboard.keycode) {
-
-                // ↑
-                case ALLEGRO_KEY_UP:
-                    break;
-
-                // ↓
-                case ALLEGRO_KEY_DOWN:
-                    break;
-
-                // W
-                case ALLEGRO_KEY_W:
-                    break;
-
-                // S
-                case ALLEGRO_KEY_S:
-                    break;
-            }
-
-        } else if(ev.type == ALLEGRO_EVENT_DISPLAY_CLOSE) {
-            goto end_game;
-        }
-
-        if(redraw && al_is_event_queue_empty(event_queue)) {
-            redraw = false;
-        }
-    }
-
-end_game:
-    // Destruir bitmaps
-    al_destroy_bitmap(spr_grass);
-    al_destroy_bitmap(spr_dirt);
-    al_destroy_bitmap(spr_stone);
-    al_destroy_bitmap(player.sprite);
-    al_destroy_bitmap(player.hand_sprite);
-
-    // Destruir compontes do Allegro
-    al_destroy_timer(timer);
-    al_destroy_display(display);
-    al_destroy_event_queue(event_queue);
-
-    return 0;
 }
 
 bool config () {
@@ -403,4 +295,145 @@ void reload_world() {
     al_clear_to_color(al_map_rgb(135, 206, 235));
     world_generation();
     al_flip_display();
+}
+
+// --------------------------------------------------------------------------------- //
+//
+//                              LOOP PRINCIPAL DO JOGO
+//  
+// --------------------------------------------------------------------------------- //
+
+int main(int argc, char **argv) {
+
+     srand(time(NULL));
+
+    if (!config()) {
+        fprintf(stderr, "Falha na inicializacao do Allegro. Encerrando o programa.\n");
+        return -1;
+    }
+
+    al_register_event_source(event_queue, al_get_display_event_source(display));
+    al_register_event_source(event_queue, al_get_timer_event_source(timer));
+    al_register_event_source(event_queue, al_get_keyboard_event_source());
+    al_register_event_source(event_queue, al_get_mouse_event_source());
+
+    init_player();
+    if (!player.sprite || !player.hand_sprite) {
+        fprintf(stderr, "Falha ao carregar os sprites do jogador. Encerrando.\n");
+        al_destroy_timer(timer);
+        al_destroy_display(display);
+        al_destroy_event_queue(event_queue);
+        al_uninstall_keyboard();
+        al_uninstall_mouse();
+        al_shutdown_image_addon();
+        return -1;
+    }
+
+    al_clear_to_color(al_map_rgb(255, 255, 255));
+    al_flip_display();
+
+    al_start_timer(timer);
+
+    al_clear_to_color(al_map_rgb(135, 206, 235));
+    world_generation();
+    al_draw_bitmap(player.sprite, player.x, player.y, 0);
+    player.facing_direction = 1;
+
+    // desenho dos braços do steve
+    player.hand_x = player.x + 8;
+    player.hand_y = player.y + 16;
+
+    al_draw_bitmap(player.hand_sprite, player.hand_x, player.hand_y, 0);
+
+    al_flip_display();
+
+    while(1) {
+        ALLEGRO_EVENT ev;
+        al_wait_for_event(event_queue, &ev);
+
+        if(ev.type==ALLEGRO_EVENT_MOUSE_BUTTON_DOWN) {
+            switch(ev.mouse.button){
+
+                case 1:
+                    printf("x:%d y:%d\n",ev.mouse.x, ev.mouse.y);
+                    reload_world();
+                    break;
+            }
+        } else if(ev.type == ALLEGRO_EVENT_TIMER) {
+            // A cada iteração do código
+            redraw = true;
+        }
+
+        else if(ev.type == ALLEGRO_EVENT_KEY_DOWN) {
+            //Tecla apertada
+            switch(ev.keyboard.keycode) {
+
+                // ↑
+                case ALLEGRO_KEY_A:
+                    break;
+
+                // ↓
+                case ALLEGRO_KEY_D:
+                    break;
+
+                // W
+                case ALLEGRO_KEY_W:
+                    break;
+
+                // S
+                case ALLEGRO_KEY_S:
+                    break;
+
+                // ESC
+                case ALLEGRO_KEY_ESCAPE:
+                    goto end_game;
+            }
+        } else if(ev.type == ALLEGRO_EVENT_KEY_UP) {
+            // Soltar a tecla
+            switch(ev.keyboard.keycode) {
+
+                // ↑
+                case ALLEGRO_KEY_A:
+                    player.dx = -3;
+                    player.facing_direction = -1; // Virar para a esquerda
+                    break;
+
+                // ↓
+                case ALLEGRO_KEY_D:
+                    player.dx = 3;
+                    player.facing_direction = 1; // Virar para a esquerda
+                    break;
+
+                // W
+                case ALLEGRO_KEY_W:
+                    break;
+
+                // S
+                case ALLEGRO_KEY_S:
+                    break;
+            }
+
+        } else if(ev.type == ALLEGRO_EVENT_DISPLAY_CLOSE) {
+            goto end_game;
+        }
+
+        if(redraw && al_is_event_queue_empty(event_queue)) {
+            redraw = false;
+        }
+    }
+
+end_game:
+    // Destruir bitmaps
+    al_destroy_bitmap(spr_grass);
+    al_destroy_bitmap(spr_dirt);
+    al_destroy_bitmap(spr_stone);
+    al_destroy_bitmap(player.sprite);
+    al_destroy_bitmap(player.hand_sprite);
+
+    // Destruir compontes do Allegro
+    al_destroy_timer(timer);
+    al_destroy_display(display);
+    al_destroy_event_queue(event_queue);
+
+    return 0;
 }
