@@ -5,13 +5,15 @@
 #include <allegro5/allegro_image.h>
 #include <allegro5/allegro_native_dialog.h>
 #include <allegro5/allegro_primitives.h>
+#include <allegro5/allegro_audio.h>
+#include <allegro5/allegro_acodec.h>
 #include <math.h>
 #include <time.h>
 
 // --- VARIÁVEIS DE CONFIGURAÇÃO ---
 #define FPS 90.0f
-#define SCREEN_WIDTH 1024
-#define SCREEN_HEIGHT 576
+#define SCREEN_WIDTH 1280
+#define SCREEN_HEIGHT 704
 #define BLOCO_TAMANHO 32
 
 // --- CONSTANTES DE FÍSICA ---
@@ -32,6 +34,14 @@ ALLEGRO_TIMER *timer = NULL;
 ALLEGRO_BITMAP *spr_grass = NULL;
 ALLEGRO_BITMAP *spr_dirt = NULL;
 ALLEGRO_BITMAP *spr_stone = NULL;
+ALLEGRO_BITMAP *spr_cactus = NULL;
+ALLEGRO_BITMAP *spr_crafting_table = NULL;
+ALLEGRO_BITMAP *spr_diamond = NULL;
+ALLEGRO_BITMAP *spr_furnace = NULL;
+ALLEGRO_BITMAP *spr_pumpkin = NULL;
+ALLEGRO_BITMAP *spr_sand = NULL;
+ALLEGRO_BITMAP *spr_tnt = NULL;
+ALLEGRO_BITMAP *spr_wood = NULL;
 
 // --- CONTROLE DE ESTADO DO TECLADO ---
 bool key_pressed[ALLEGRO_KEY_MAX];
@@ -39,6 +49,9 @@ bool key_pressed[ALLEGRO_KEY_MAX];
 // --- CONTROLE DE POSIÇÃO DO MOUSE  ---
 float mouse_x = 0;
 float mouse_y = 0;
+int tile_x = 0;
+int tile_y = 0;
+int scroll_counter = 0;
 
 // --- VARIÁVEIS GLOBAIS ---
 bool redraw = false;
@@ -52,6 +65,13 @@ int windowed_height = SCREEN_HEIGHT;
 #define FULLSCREEN_BUTTON_Y 10
 #define FULLSCREEN_BUTTON_WIDTH 100
 #define FULLSCREEN_BUTTON_HEIGHT 30
+
+// --- DFINIÇÃO PARA OS TIPOS DE AÇÃO ---
+#define ACTION_BREAKING 1 // Ação: Quebrando um bloco
+#define ACTION_PLACING  2 // Ação: Colocando um bloco
+
+#define MAX_BLOCK_TYPES 4 // 0 (vazio), 1 (grama), 2 (terra), 3 (pedra)
+#define MAX_ACTIONS     2 // 1 (quebrando), 2 (colocando)
 
 // --------------------------------------------------------------------------------- //
 
@@ -70,7 +90,7 @@ void toggle_fullscreen();
 void world_generation();
 // --------------------------------------------------------------------------------- //
 
-// --- STRUCT DO JOGADOR
+// --- STRUCT DO JOGADOR ---
 typedef struct Player {
     float x;
     float y;
@@ -87,6 +107,14 @@ typedef struct Player {
 } Player;
 
 Player player; // instância global
+
+// --- STRUCT PARA SONS ---
+typedef struct SoundSet {
+    ALLEGRO_SAMPLE** samples; 
+    int count;
+} SoundSet;
+
+SoundSet block_action_sounds[MAX_BLOCK_TYPES][MAX_ACTIONS];
 
 // --------------------------------------------------------------------------------- //
 
@@ -204,6 +232,14 @@ void destroyBitmapSprites() {
     if (spr_stone) al_destroy_bitmap(spr_stone);
     if (player.sprite) al_destroy_bitmap(player.sprite);
     if (player.hand_sprite) al_destroy_bitmap(player.hand_sprite);
+    if (spr_cactus) al_destroy_bitmap(spr_cactus);
+    if (spr_crafting_table) al_destroy_bitmap(spr_crafting_table);
+    if (spr_diamond) al_destroy_bitmap(spr_diamond);
+    if (spr_furnace) al_destroy_bitmap(spr_furnace);
+    if (spr_pumpkin) al_destroy_bitmap(spr_pumpkin);
+    if (spr_sand) al_destroy_bitmap(spr_sand);
+    if (spr_tnt) al_destroy_bitmap(spr_tnt);
+    if (spr_wood) al_destroy_bitmap(spr_wood);
 
     al_destroy_display(display);
     al_destroy_timer(timer);
@@ -222,21 +258,17 @@ void draw_player() {
     al_draw_bitmap(player.sprite, player.x, player.y, flip_flags);
 
     // --- DESENHA A MÃO DO JOGADOR ---
-    float pivot_x = player.x + 12;
-    float pivot_y = player.y + 20;
+    float pivot_x = player.x + 16;
+    float pivot_y = player.y + 16;
 
     float sprite_pivot_offset_x = 0;
     float sprite_pivot_offset_y = 0;
 
-
     float angle = atan2f(mouse_y - pivot_y, mouse_x - pivot_x);
 
-    int hand_flip_flags = flip_flags;
-
-    if (player.facing_direction == -1 && mouse_x > pivot_x) {
-        hand_flip_flags |= ALLEGRO_FLIP_HORIZONTAL; 
-    } else if (player.facing_direction == 1 && mouse_x < pivot_x) {
-        hand_flip_flags |= ALLEGRO_FLIP_HORIZONTAL;
+    if (player.facing_direction == 1 && mouse_x < pivot_x) {
+        pivot_x = player.x + 16;
+        pivot_y = player.y + 25;
     }
 
     al_draw_rotated_bitmap(player.hand_sprite,
@@ -245,7 +277,7 @@ void draw_player() {
                            pivot_x,              
                            pivot_y,
                            angle,                 
-                           hand_flip_flags);    
+                           0);    
 }
 
 void draw_world_from_map() {
@@ -258,6 +290,14 @@ void draw_world_from_map() {
                 case 1: block_sprite = spr_grass; break;
                 case 2: block_sprite = spr_dirt; break;
                 case 3: block_sprite = spr_stone; break;
+                case 4: block_sprite = spr_cactus; break;
+                case 5: block_sprite = spr_crafting_table; break;
+                case 6: block_sprite = spr_diamond; break;
+                case 7: block_sprite = spr_furnace; break;
+                case 8: block_sprite = spr_pumpkin; break;
+                case 9: block_sprite = spr_sand; break;
+                case 10: block_sprite = spr_tnt; break;
+                case 11: block_sprite = spr_wood; break;
             }
             if (block_sprite) {
                 al_draw_bitmap(block_sprite, (float)i * BLOCO_TAMANHO, (float)j * BLOCO_TAMANHO, 0);
@@ -283,7 +323,7 @@ bool init_player() {
         return false;
     }
 
-    player.hand_sprite = load_and_scale_bitmap("sprites/spr_steve_hand.png", 14, 22);
+    player.hand_sprite = load_and_scale_bitmap("sprites/spr_steve_hand.png", 22, 8);
     if (!player.hand_sprite) {
         fprintf(stderr, "falha ao criar player.hand_sprite!\n");
         destroyBitmapSprites();
@@ -304,6 +344,14 @@ bool renderSprites() {
     spr_grass = load_and_scale_bitmap("sprites/spr_grass.png", BLOCO_TAMANHO, BLOCO_TAMANHO);
     spr_dirt  = load_and_scale_bitmap("sprites/spr_dirt.png", BLOCO_TAMANHO, BLOCO_TAMANHO);
     spr_stone = load_and_scale_bitmap("sprites/spr_stone.png", BLOCO_TAMANHO, BLOCO_TAMANHO);
+    spr_cactus = load_and_scale_bitmap("sprites/spr_cactus.png", BLOCO_TAMANHO, BLOCO_TAMANHO);
+    spr_crafting_table = load_and_scale_bitmap("sprites/spr_crafting_table.png", BLOCO_TAMANHO, BLOCO_TAMANHO);
+    spr_diamond = load_and_scale_bitmap("sprites/spr_diamond.png", BLOCO_TAMANHO, BLOCO_TAMANHO);
+    spr_furnace = load_and_scale_bitmap("sprites/spr_furnace.png", BLOCO_TAMANHO, BLOCO_TAMANHO);
+    spr_pumpkin = load_and_scale_bitmap("sprites/spr_pumpkin.png", BLOCO_TAMANHO, BLOCO_TAMANHO);
+    spr_sand = load_and_scale_bitmap("sprites/spr_sand.png", BLOCO_TAMANHO, BLOCO_TAMANHO);
+    spr_tnt = load_and_scale_bitmap("sprites/spr_tnt.png", BLOCO_TAMANHO, BLOCO_TAMANHO);
+    spr_wood = load_and_scale_bitmap("sprites/spr_wood.png", BLOCO_TAMANHO, BLOCO_TAMANHO);
 
     // grass
     if(!spr_grass) {
@@ -325,12 +373,68 @@ bool renderSprites() {
         destroyBitmapSprites();
         return false;
     }
+
+    // cactus
+    if(!spr_cactus) {
+        fprintf(stderr, "falha ao criar spr_cactus!\n");
+        destroyBitmapSprites();
+        return false;
+    }
+    
+    // crafting_table
+    if(!spr_crafting_table) {
+        fprintf(stderr, "falha ao criar spr_crafting_table!\n");
+        destroyBitmapSprites();
+        return false;
+    }
+
+    // diamond
+    if(!spr_diamond) {
+        fprintf(stderr, "falha ao criar spr_diamond!\n");
+        destroyBitmapSprites();
+        return false;
+    }
+
+    // furnace
+    if(!spr_furnace) {
+        fprintf(stderr, "falha ao criar spr_furnace!\n");
+        destroyBitmapSprites();
+        return false;
+    }
+
+    // pumpkin
+    if(!spr_pumpkin) {
+        fprintf(stderr, "falha ao criar spr_pumpkin!\n");
+        destroyBitmapSprites();
+        return false;
+    }
+
+    // sand
+    if(!spr_sand) {
+        fprintf(stderr, "falha ao criar spr_sand!\n");
+        destroyBitmapSprites();
+        return false;
+    }
+
+    // tnt
+    if(!spr_tnt) {
+        fprintf(stderr, "falha ao criar spr_tnt!\n");
+        destroyBitmapSprites();
+        return false;
+    }
+
+    // wood
+    if(!spr_wood) {
+        fprintf(stderr, "falha ao criar spr_wood!\n");
+        destroyBitmapSprites();
+        return false;
+    }
     
     return true;
 }
 
 void reload_world() {
-    world_generation();
+    world_generation(); 
     redraw = true;
 }
 
@@ -383,6 +487,20 @@ void update_player_physics() {
     if (key_pressed[ALLEGRO_KEY_A] && key_pressed[ALLEGRO_KEY_D]) {
         player.speed_x = 0;
     }
+
+    if (key_pressed[ALLEGRO_KEY_0]) scroll_counter = 0;
+    if (key_pressed[ALLEGRO_KEY_1]) scroll_counter = 1;
+    if (key_pressed[ALLEGRO_KEY_2]) scroll_counter = 2;
+    if (key_pressed[ALLEGRO_KEY_3]) scroll_counter = 3;
+    if (key_pressed[ALLEGRO_KEY_4]) scroll_counter = 4;
+    if (key_pressed[ALLEGRO_KEY_5]) scroll_counter = 5;
+    if (key_pressed[ALLEGRO_KEY_6]) scroll_counter = 6;
+    if (key_pressed[ALLEGRO_KEY_7]) scroll_counter = 7;
+    if (key_pressed[ALLEGRO_KEY_8]) scroll_counter = 8;
+    if (key_pressed[ALLEGRO_KEY_9]) scroll_counter = 9;
+    if (key_pressed[ALLEGRO_KEY_Z]) scroll_counter = 10;
+    if (key_pressed[ALLEGRO_KEY_X]) scroll_counter = 11;
+
     
     // --- PULO (SPACE || W) ---
     if (key_pressed[ALLEGRO_KEY_SPACE] && player.on_ground || key_pressed[ALLEGRO_KEY_W] && player.on_ground) {
@@ -402,8 +520,6 @@ void update_player_physics() {
     int player_top_tile_y = (int)(player.y) / BLOCO_TAMANHO;
     int player_bottom_tile_y = (int)(player.y + player.height - 1) / BLOCO_TAMANHO;
 
-    bool collided_horizontally = false;
-
     int r;
     for (r = player_top_tile_y; r <= player_bottom_tile_y; r++) {
 
@@ -411,14 +527,12 @@ void update_player_physics() {
 
         if (player.speed_x > 0) { // Movendo para a direita
             if (player_right_tile_next_x >= 0 && player_right_tile_next_x < WORLD_COLS && world_map[player_right_tile_next_x][r] != 0) {
-                collided_horizontally = true;
                 player.x = player_right_tile_next_x * BLOCO_TAMANHO - player.width;
                 player.speed_x = 0;
                 break; 
             }
         } else if (player.speed_x < 0) { // Movendo para a esquerda
             if (player_left_tile_next_x >= 0 && player_left_tile_next_x < WORLD_COLS && world_map[player_left_tile_next_x][r] != 0) {
-                collided_horizontally = true;
                 player.x = (player_left_tile_next_x + 1) * BLOCO_TAMANHO;
                 player.speed_x = 0;
                 break;
@@ -437,15 +551,12 @@ void update_player_physics() {
     int player_top_tile_next_y = (int)(next_y) / BLOCO_TAMANHO;
     int player_bottom_tile_next_y = (int)(next_y + player.height - 1) / BLOCO_TAMANHO;
 
-    bool collided_vertically = false;
-
     int c;
     for (c = player_left_tile_x; c <= player_right_tile_x; c++) {
         if (c < 0 || c >= WORLD_COLS) continue;
 
         if (player.speed_y >= 0) {
             if (player_bottom_tile_next_y >= 0 && player_bottom_tile_next_y < WORLD_ROWS && world_map[c][player_bottom_tile_next_y] != 0) {
-                collided_vertically = true;
                 player.y = player_bottom_tile_next_y * BLOCO_TAMANHO - player.height;
                 player.speed_y = 0;
                 player.on_ground = true;
@@ -453,7 +564,6 @@ void update_player_physics() {
             }
         } else { // PULO
             if (player_top_tile_next_y >= 0 && player_top_tile_next_y < WORLD_ROWS && world_map[c][player_top_tile_next_y] != 0) {
-                collided_vertically = true;
                 player.y = (player_top_tile_next_y + 1) * BLOCO_TAMANHO;
                 player.speed_y = 0;
                 break;
@@ -488,6 +598,14 @@ void world_generation() {
     // 1 = spr_grass
     // 2 = spr_dirt
     // 3 = spr_stone
+    // 4 = spr_cactus
+    // 5 = spr_crafting_table
+    // 6 = spr_diamond
+    // 7 = spr_furnace
+    // 8 = spr_pumpkin
+    // 9 = spr_sand
+    // 10 = spr_tnt
+    // 11 = spr_wood
 
     // Limpa o array mundo
     int i;
@@ -498,7 +616,7 @@ void world_generation() {
         }
     }
 
-    const int heights_block[] = {176 + 32, 208 + 32, 240 + 32, 272 + 32, 304 + 32};
+    const int heights_block[] = {176 + 128, 208 + 128, 240 + 128, 272 + 128, 304 + 128};
     const int height_block = sizeof(heights_block) / sizeof(heights_block[0]);
     int starting_height_block = choose_random(heights_block, height_block);
     int alternative_height_block = starting_height_block;
@@ -554,6 +672,147 @@ void world_generation() {
 }
 
 // --------------------------------------------------------------------------------- //
+// SOUNDS
+bool load_game_sounds_library();
+
+bool load_game_sounds_library() {
+    int i;
+    for (i = 0; i < MAX_BLOCK_TYPES; i++) {
+        int j;
+        for (j = 0; j < MAX_ACTIONS; j++) {
+            block_action_sounds[i][j].samples = NULL;
+            block_action_sounds[i][j].count = 0;
+        }
+    }
+
+    // --- CARREGANDO SONS DE QUEBRA (ACTION_BREAKING) ---
+
+/*
+    // SONS DA GRAMA (ID 1, ACTION_BREAKING)
+    ALLEGRO_SAMPLE* grass_break_sfx[] = {
+        al_load_sample("audio/sfx_grass_break_1.ogg"),
+        al_load_sample("audio/sfx_grass_break_2.ogg")
+    };
+    int grass_break_count = sizeof(grass_break_sfx) / sizeof(ALLEGRO_SAMPLE*);
+    
+    block_action_sounds[1][ACTION_BREAKING].samples = (ALLEGRO_SAMPLE**)malloc(grass_break_count * sizeof(ALLEGRO_SAMPLE*));
+    if (!block_action_sounds[1][ACTION_BREAKING].samples) { return false; }
+
+    for (i = 0; i < grass_break_count; i++) {
+        block_action_sounds[1][ACTION_BREAKING].samples[i] = grass_break_sfx[i];
+        if (!grass_break_sfx[i]) { fprintf(stderr, "Falha ao carregar sfx_grass_break_%d.ogg!\n", i + 1); }
+    }
+    block_action_sounds[1][ACTION_BREAKING].count = grass_break_count;
+*/
+
+    // SONS DA TERRA (ID 2, ACTION_BREAKING)
+    ALLEGRO_SAMPLE* dirt_break_sfx[] = {
+        al_load_sample("audio/sfx_dirt_break_1.mp3"),
+        al_load_sample("audio/sfx_dirt_break_2.mp3"),
+        al_load_sample("audio/sfx_dirt_break_3.mp3"),
+        al_load_sample("audio/sfx_dirt_break_4.mp3")
+    };
+    int dirt_break_count = sizeof(dirt_break_sfx) / sizeof(ALLEGRO_SAMPLE*);
+    block_action_sounds[2][ACTION_BREAKING].samples = (ALLEGRO_SAMPLE**)malloc(dirt_break_count * sizeof(ALLEGRO_SAMPLE*));
+    if (!block_action_sounds[2][ACTION_BREAKING].samples) { return false; }
+    for (i = 0; i < dirt_break_count; i++) {
+        block_action_sounds[2][ACTION_BREAKING].samples[i] = dirt_break_sfx[i];
+        if (!dirt_break_sfx[i]) { fprintf(stderr, "Falha ao carregar sfx_dirt_break_%d.mp3!\n", i + 1); }
+    }
+    block_action_sounds[2][ACTION_BREAKING].count = dirt_break_count;
+
+/*
+    // SONS DA PEDRA (ID 3, ACTION_BREAKING)
+    ALLEGRO_SAMPLE* stone_break_sfx[] = {
+        al_load_sample("audio/sfx_stone_break_1.ogg"),
+        al_load_sample("audio/sfx_stone_break_2.ogg")
+    };
+    int stone_break_count = sizeof(stone_break_sfx) / sizeof(ALLEGRO_SAMPLE*);
+    block_action_sounds[3][ACTION_BREAKING].samples = (ALLEGRO_SAMPLE**)malloc(stone_break_count * sizeof(ALLEGRO_SAMPLE*));
+    if (!block_action_sounds[3][ACTION_BREAKING].samples) {  return false; }
+    for (i = 0; i < stone_break_count; i++) {
+        block_action_sounds[3][ACTION_BREAKING].samples[i] = stone_break_sfx[i];
+        if (!stone_break_sfx[i]) { fprintf(stderr, "Falha ao carregar sfx_stone_break_%d.ogg!\n", i + 1); }
+    }
+    block_action_sounds[3][ACTION_BREAKING].count = stone_break_count;
+
+
+    // --- CARREGANDO SONS DE COLOCAR (ACTION_PLACING) ---
+
+    // SONS DA GRAMA (ID 1, ACTION_PLACING)
+    ALLEGRO_SAMPLE* grass_place_sfx[] = {
+        al_load_sample("audio/sfx_grass_place_1.ogg")
+    };
+    int grass_place_count = sizeof(grass_place_sfx) / sizeof(ALLEGRO_SAMPLE*);
+    block_action_sounds[1][ACTION_PLACING].samples = (ALLEGRO_SAMPLE**)malloc(grass_place_count * sizeof(ALLEGRO_SAMPLE*));
+    if (!block_action_sounds[1][ACTION_PLACING].samples) { return false; }
+    for (i = 0; i < grass_place_count; i++) {
+        block_action_sounds[1][ACTION_PLACING].samples[i] = grass_place_sfx[i];
+        if (!grass_place_sfx[i]) { fprintf(stderr, "Falha ao carregar sfx_grass_place_%d.ogg!\n", i + 1); }
+    }
+    block_action_sounds[1][ACTION_PLACING].count = grass_place_count;
+
+    // SONS DA TERRA (ID 2, ACTION_PLACING)
+    ALLEGRO_SAMPLE* dirt_place_sfx[] = {
+        al_load_sample("audio/sfx_dirt_place_1.ogg")
+    };
+    int dirt_place_count = sizeof(dirt_place_sfx) / sizeof(ALLEGRO_SAMPLE*);
+    block_action_sounds[2][ACTION_PLACING].samples = (ALLEGRO_SAMPLE**)malloc(dirt_place_count * sizeof(ALLEGRO_SAMPLE*));
+    if (!block_action_sounds[2][ACTION_PLACING].samples) {  return false; }
+    for (i = 0; i < dirt_place_count; i++) {
+        block_action_sounds[2][ACTION_PLACING].samples[i] = dirt_place_sfx[i];
+        if (!dirt_place_sfx[i]) { fprintf(stderr, "Falha ao carregar sfx_dirt_place_%d.ogg!\n", i + 1); }
+    }
+    block_action_sounds[2][ACTION_PLACING].count = dirt_place_count;
+
+
+    // SONS DA PEDRA (ID 3, ACTION_PLACING)
+    ALLEGRO_SAMPLE* stone_place_sfx[] = {
+        al_load_sample("audio/sfx_stone_place_1.ogg")
+    };
+    int stone_place_count = sizeof(stone_place_sfx) / sizeof(ALLEGRO_SAMPLE*);
+    block_action_sounds[3][ACTION_PLACING].samples = (ALLEGRO_SAMPLE**)malloc(stone_place_count * sizeof(ALLEGRO_SAMPLE*));
+    if (!block_action_sounds[3][ACTION_PLACING].samples) { return false; }
+    for (i = 0; i < stone_place_count; i++) {
+        block_action_sounds[3][ACTION_PLACING].samples[i] = stone_place_sfx[i];
+        if (!stone_place_sfx[i]) { fprintf(stderr, "Falha ao carregar sfx_stone_place_%d.ogg!\n", i + 1); }
+    }
+    block_action_sounds[3][ACTION_PLACING].count = stone_place_count;
+*/
+    return true;
+}
+
+// NOVO PROTÓTIPO:
+void sounds(int block_id, int action);
+
+// Implementação da função
+void sounds(int block_id, int action) {
+    // 1. Valida os índices
+    if (block_id < 0 || block_id >= MAX_BLOCK_TYPES ||
+        action < 0 || action >= MAX_ACTIONS) {
+        fprintf(stderr, "Erro: Tentativa de acessar som com ID de bloco ou acao invalida (%d, %d).\n", block_id, action);
+        return;
+    }
+
+    SoundSet *set = &block_action_sounds[block_id][action];
+
+    // 2. Verifica se existem sons para este bloco e ação
+    if (set->count > 0 && set->samples != NULL) {
+        int random_index = rand() % set->count; // Escolhe um som aleatoriamente
+        ALLEGRO_SAMPLE *sound_to_play = set->samples[random_index];
+        if (sound_to_play) {
+            al_play_sample(sound_to_play, 1.0, 0.0, 1.0, ALLEGRO_PLAYMODE_ONCE, NULL);
+        } else {
+            fprintf(stderr, "Erro: Som nulo no index %d para Bloco ID %d, Acao %d!\n", random_index, block_id, action);
+        }
+    } else {
+        // Opcional: Avisar se não houver som para essa combinação.
+        // fprintf(stdout, "Nenhum som configurado para Bloco ID %d, Acao %d.\n", block_id, action);
+    }
+}
+
+
+// --------------------------------------------------------------------------------- //
 //
 //                              LOOP PRINCIPAL DO JOGO
 //  
@@ -565,6 +824,11 @@ int main(int argc, char **argv) {
 
     if (!config()) {
         fprintf(stderr, "Falha na inicializacao do Allegro. Encerrando o programa.\n");
+        return -1;
+    }
+
+    if (!load_game_sounds_library()) {
+        fprintf(stderr, "Falha ao carregar a biblioteca de sons do jogo. Encerrando.\n");
         return -1;
     }
 
@@ -594,8 +858,9 @@ int main(int argc, char **argv) {
     al_draw_bitmap(player.hand_sprite, player.hand_x, player.hand_y, 0);
 
     // Gera o mundo
-    world_generation();
+    // world_generation();
     al_clear_to_color(al_map_rgb(135, 206, 235));
+    world_generation();
     draw_world_from_map();
     draw_player();
 
@@ -614,8 +879,7 @@ int main(int argc, char **argv) {
         al_wait_for_event(event_queue, &ev);
 
         if(ev.type==ALLEGRO_EVENT_MOUSE_BUTTON_DOWN) {
-            switch(ev.mouse.button){
-
+            switch(ev.mouse.button){ // Esquerdo
                 case 1:
                     printf("Clique do mouse em: x=%d, y=%d\n", ev.mouse.x, ev.mouse.y);
                 
@@ -626,19 +890,50 @@ int main(int argc, char **argv) {
                         ev.mouse.y <= FULLSCREEN_BUTTON_Y + FULLSCREEN_BUTTON_HEIGHT)
                     {
                         toggle_fullscreen(); // Ativa/desativa tela cheia
-                        reload_world(); 
+                        //reload_world(); 
                     }
                     else {
-                        reload_world(); // Caso contrário, recarrega o mundo (conforme sua lógica original)
+                        //reload_world(); // Caso contrário, recarrega o mundo (conforme sua lógica original)
+                    }
+                    
+                    // comando para remover blcos
+                    if (tile_x >= 0 && tile_x < WORLD_COLS && tile_y >= 0 && tile_y < WORLD_ROWS) {
+                        world_map[tile_x][tile_y] = 0;
+                    }
+
+                    break;
+                case 2:
+                    // comando para adicionar blcos
+                    if (tile_x >= 0 && tile_x < WORLD_COLS && tile_y >= 0 && tile_y < WORLD_ROWS) {
+                        if (world_map[tile_x][tile_y + 1] != 0 || world_map[tile_x][tile_y - 1] != 0 || world_map[tile_x + 1][tile_y] || world_map[tile_x - 1][tile_y]) {
+                            world_map[tile_x][tile_y] = scroll_counter;
+                        }
                     }
                     break;
             }
         } else if (ev.type == ALLEGRO_EVENT_MOUSE_AXES) {
             mouse_x = ev.mouse.x;
             mouse_y = ev.mouse.y;
+
             redraw = true;
         } else if(ev.type == ALLEGRO_EVENT_TIMER) {
             update_player_physics();
+
+            // --- Impressão de Debug do Mouse e Bloco ---
+            //printf("Mouse: (%.2f, %.2f)\n", mouse_x, mouse_y); // Use %.2f para 2 casas decimais no float
+
+            // Calcula os índices do bloco, garantindo truncamento para o tile correto
+            tile_x = (int)(mouse_x / BLOCO_TAMANHO);
+            tile_y = (int)(mouse_y / BLOCO_TAMANHO);
+
+            // Verifica se os índices estão dentro dos limites da matriz do mundo
+            if (tile_x >= 0 && tile_x < WORLD_COLS && tile_y >= 0 && tile_y < WORLD_ROWS) {
+                //printf("Bloco em (%d, %d): %d\n", tile_x, tile_y, world_map[tile_x][tile_y]);
+            } else {
+                //printf("Mouse fora dos limites do mapa (tile: %d, %d)\n", tile_x, tile_y);
+            }
+            // --- Fim da Impressão de Debug ---
+
             redraw = true;
         } else if(ev.type == ALLEGRO_EVENT_KEY_DOWN) {
             key_pressed[ev.keyboard.keycode] = true;
@@ -677,6 +972,14 @@ end_game:
     al_destroy_bitmap(spr_stone);
     al_destroy_bitmap(player.sprite);
     al_destroy_bitmap(player.hand_sprite);
+    al_destroy_bitmap(spr_cactus);
+    al_destroy_bitmap(spr_crafting_table);
+    al_destroy_bitmap(spr_diamond);
+    al_destroy_bitmap(spr_furnace);
+    al_destroy_bitmap(spr_pumpkin);
+    al_destroy_bitmap(spr_sand);
+    al_destroy_bitmap(spr_tnt);
+    al_destroy_bitmap(spr_wood);
 
     // Destruir compontes do Allegro
     al_destroy_timer(timer);
