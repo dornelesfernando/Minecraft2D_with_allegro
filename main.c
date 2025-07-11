@@ -42,6 +42,7 @@ ALLEGRO_BITMAP *spr_pumpkin = NULL;
 ALLEGRO_BITMAP *spr_sand = NULL;
 ALLEGRO_BITMAP *spr_tnt = NULL;
 ALLEGRO_BITMAP *spr_wood = NULL;
+ALLEGRO_BITMAP *spr_leaves = NULL;
 
 // --- CONTROLE DE ESTADO DO TECLADO ---
 bool key_pressed[ALLEGRO_KEY_MAX];
@@ -240,6 +241,7 @@ void destroyBitmapSprites() {
     if (spr_sand) al_destroy_bitmap(spr_sand);
     if (spr_tnt) al_destroy_bitmap(spr_tnt);
     if (spr_wood) al_destroy_bitmap(spr_wood);
+    if (spr_leaves) al_destroy_bitmap(spr_leaves);
 
     al_destroy_display(display);
     al_destroy_timer(timer);
@@ -298,6 +300,7 @@ void draw_world_from_map() {
                 case 9: block_sprite = spr_sand; break;
                 case 10: block_sprite = spr_tnt; break;
                 case 11: block_sprite = spr_wood; break;
+                case 12: block_sprite = spr_leaves; break;
             }
             if (block_sprite) {
                 al_draw_bitmap(block_sprite, (float)i * BLOCO_TAMANHO, (float)j * BLOCO_TAMANHO, 0);
@@ -352,6 +355,7 @@ bool renderSprites() {
     spr_sand = load_and_scale_bitmap("sprites/spr_sand.png", BLOCO_TAMANHO, BLOCO_TAMANHO);
     spr_tnt = load_and_scale_bitmap("sprites/spr_tnt.png", BLOCO_TAMANHO, BLOCO_TAMANHO);
     spr_wood = load_and_scale_bitmap("sprites/spr_wood.png", BLOCO_TAMANHO, BLOCO_TAMANHO);
+    spr_leaves = load_and_scale_bitmap("sprites/spr_leaves.png", BLOCO_TAMANHO, BLOCO_TAMANHO);
 
     // grass
     if(!spr_grass) {
@@ -426,6 +430,13 @@ bool renderSprites() {
     // wood
     if(!spr_wood) {
         fprintf(stderr, "falha ao criar spr_wood!\n");
+        destroyBitmapSprites();
+        return false;
+    }
+
+    // leaves
+    if(!spr_leaves) {
+        fprintf(stderr, "falha ao criar spr_leaves!\n");
         destroyBitmapSprites();
         return false;
     }
@@ -606,6 +617,7 @@ void world_generation() {
     // 9 = spr_sand
     // 10 = spr_tnt
     // 11 = spr_wood
+    // 12 = spr_leaves
 
     // Limpa o array mundo
     int i;
@@ -626,6 +638,7 @@ void world_generation() {
     int alternative_dirt_level = alternative_height_block; // Inicializado para evitar lixo
 
     int x;
+    int a = 0;
     for(x = 0; x < SCREEN_WIDTH; x += BLOCO_TAMANHO) {
         int current_col = x / BLOCO_TAMANHO;
         if (current_col >= WORLD_COLS) continue;
@@ -640,6 +653,29 @@ void world_generation() {
         int grass_level = alternative_height_block / BLOCO_TAMANHO;
         if (grass_level >= 0 && grass_level < WORLD_ROWS) {
             world_map[current_col][grass_level] = 1;
+            a++;
+        }
+
+        
+        printf("%d\n", a);
+        if(a == 5 || a == 20 || a == 30){
+            world_map[current_col][grass_level - 1] = 11;
+            world_map[current_col][grass_level - 2] = 11;
+            world_map[current_col][grass_level - 3] = 11;
+            world_map[current_col][grass_level - 4] = 12;
+            world_map[current_col][grass_level - 5] = 12;
+            world_map[current_col][grass_level - 6] = 12;
+            world_map[current_col][grass_level - 7] = 12;
+            world_map[current_col - 1][grass_level - 6] = 12;
+            world_map[current_col + 1][grass_level - 6] = 12;
+            world_map[current_col - 1][grass_level - 5] = 12;
+            world_map[current_col - 2][grass_level - 5] = 12;
+            world_map[current_col - 1][grass_level - 4] = 12;
+            world_map[current_col - 2][grass_level - 4] = 12;
+            world_map[current_col + 1][grass_level - 5] = 12;
+            world_map[current_col + 2][grass_level - 5] = 12;
+            world_map[current_col + 1][grass_level - 4] = 12;
+            world_map[current_col + 2][grass_level - 4] = 12;
         }
 
         int y;
@@ -685,8 +721,7 @@ bool load_game_sounds_library() {
         }
     }
 
-    // --- CARREGANDO SONS DE QUEBRA (ACTION_BREAKING) ---
-
+    // --- CARREGANDO SONS DE QUEBRA ---
 /*
     // SONS DA GRAMA (ID 1, ACTION_BREAKING)
     ALLEGRO_SAMPLE* grass_break_sfx[] = {
@@ -703,7 +738,7 @@ bool load_game_sounds_library() {
         if (!grass_break_sfx[i]) { fprintf(stderr, "Falha ao carregar sfx_grass_break_%d.ogg!\n", i + 1); }
     }
     block_action_sounds[1][ACTION_BREAKING].count = grass_break_count;
-*/
+
 
     // SONS DA TERRA (ID 2, ACTION_BREAKING)
     ALLEGRO_SAMPLE* dirt_break_sfx[] = {
@@ -721,7 +756,7 @@ bool load_game_sounds_library() {
     }
     block_action_sounds[2][ACTION_BREAKING].count = dirt_break_count;
 
-/*
+
     // SONS DA PEDRA (ID 3, ACTION_BREAKING)
     ALLEGRO_SAMPLE* stone_break_sfx[] = {
         al_load_sample("audio/sfx_stone_break_1.ogg"),
@@ -737,7 +772,7 @@ bool load_game_sounds_library() {
     block_action_sounds[3][ACTION_BREAKING].count = stone_break_count;
 
 
-    // --- CARREGANDO SONS DE COLOCAR (ACTION_PLACING) ---
+    // --- CARREGANDO SONS DE COLOCAR ---
 
     // SONS DA GRAMA (ID 1, ACTION_PLACING)
     ALLEGRO_SAMPLE* grass_place_sfx[] = {
@@ -782,12 +817,9 @@ bool load_game_sounds_library() {
     return true;
 }
 
-// NOVO PROTÓTIPO:
 void sounds(int block_id, int action);
 
-// Implementação da função
 void sounds(int block_id, int action) {
-    // 1. Valida os índices
     if (block_id < 0 || block_id >= MAX_BLOCK_TYPES ||
         action < 0 || action >= MAX_ACTIONS) {
         fprintf(stderr, "Erro: Tentativa de acessar som com ID de bloco ou acao invalida (%d, %d).\n", block_id, action);
@@ -796,19 +828,15 @@ void sounds(int block_id, int action) {
 
     SoundSet *set = &block_action_sounds[block_id][action];
 
-    // 2. Verifica se existem sons para este bloco e ação
     if (set->count > 0 && set->samples != NULL) {
-        int random_index = rand() % set->count; // Escolhe um som aleatoriamente
+        int random_index = rand() % set->count;
         ALLEGRO_SAMPLE *sound_to_play = set->samples[random_index];
         if (sound_to_play) {
             al_play_sample(sound_to_play, 1.0, 0.0, 1.0, ALLEGRO_PLAYMODE_ONCE, NULL);
         } else {
             fprintf(stderr, "Erro: Som nulo no index %d para Bloco ID %d, Acao %d!\n", random_index, block_id, action);
         }
-    } else {
-        // Opcional: Avisar se não houver som para essa combinação.
-        // fprintf(stdout, "Nenhum som configurado para Bloco ID %d, Acao %d.\n", block_id, action);
-    }
+    } 
 }
 
 
@@ -980,6 +1008,7 @@ end_game:
     al_destroy_bitmap(spr_sand);
     al_destroy_bitmap(spr_tnt);
     al_destroy_bitmap(spr_wood);
+    al_destroy_bitmap(spr_leaves);
 
     // Destruir compontes do Allegro
     al_destroy_timer(timer);
