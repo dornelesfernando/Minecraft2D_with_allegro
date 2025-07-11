@@ -1,5 +1,7 @@
 <a id="readme-top"></a>
 <div align="center">
+
+  <img width="1604" height="678" alt="image" src="https://github.com/user-attachments/assets/71474527-49b8-47c6-865a-b4684a1e79a8" />
   
   [![MIT License][license-shield]][license-url]
   [![LinkedIn][linkedin-shield]][linkedin-url]
@@ -36,7 +38,6 @@
     <li><a href="#feito-com">Feito Com</a></li>
     <li><a href="#instalacao">Instalação</a></li>
     <li><a href="#uso">Uso</a></li>
-    <li><a href="#imagens">Imagens</a></li>
     <li><a href="#roadmap">Planejamento</a></li>
     <li><a href="#licenca">Licença</a></li>
     <li><a href="#contato">Contato</a></li>
@@ -112,15 +113,6 @@ Controles (inferidos):
 <!--- Mouse (botão esquerdo): Quebrar blocos.-->
 <!--- Mouse (botão direito): Colocar blocos.-->
 <!--- Teclas numéricas (1, 2, 3...): Selecionar diferentes tipos de blocos no inventário.-->
-
-<p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
-
----
-
-<a id="imagens"></a>
-## 📸 Imagens
-
-A adicionar...
 
 <p align="right">(<a href="#readme-top">voltar ao topo</a>)</p>
 
